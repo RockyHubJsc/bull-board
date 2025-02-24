@@ -62,6 +62,10 @@ async function getQueueKeys() {
   });
 
   app.use("/queues", serverAdapter.getRouter());
+  app.use('/healthz',(req: any, res: any)=>{
+    res.status(200).send("OK");
+    return;
+  });
 
   app.listen(PORT, () => {
     console.log(`Running on ${PORT}...`);
