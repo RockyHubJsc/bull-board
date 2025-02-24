@@ -3,7 +3,7 @@ FROM node:20.11-alpine
 LABEL Maintainer="Tuan Bui <tuan.bm@rockyhub.io>" \
     Description="Lightweight container for nodejs application on Alpine Linux."
 
-WORKDIR /app
+WORKDIR /
 
 COPY . .
 
