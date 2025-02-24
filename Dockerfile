@@ -13,4 +13,4 @@ COPY . .
 
 # RUN yarn build:web
 
-CMD ["node", "start:prod"]
+CMD ["pnpm", "start:prod"]
