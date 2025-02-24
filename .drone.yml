@@ -1,0 +1,126 @@
+---
+kind: pipeline
+type: docker
+name: default
+
+environment:
+  PNPM_VERSION: 9.12.1
+
+steps:
+  - name: prepare
+    image: busybox
+    commands:
+      - mkdir -p /cache/${DRONE_REPO}/docker
+      - mkdir -p /cache2/${DRONE_REPO}/pnpm
+    volumes:
+      - name: cache
+        path: /cache
+      - name: cache2
+        path: /cache2
+
+  - name: Install Packages
+    image: node:20.18-alpine
+    commands:
+      - node -v
+      - npm -v
+      - npm i -g pnpm@$PNPM_VERSION
+      - pnpm --version
+      - pnpm config set store-dir /pnpm
+      - pnpm install --prefer-offline --frozen-lockfile --store /pnpm --prod=false
+    environment:
+      NODE_ENV:
+        from_secret: NODE_ENV
+    volumes:
+      - name: pnpm
+        path: /pnpm
+      - name: cache2
+        path: /cache2
+
+  - name: build:staging
+    image: node:20.18-alpine
+    commands:
+      - npm i -g pnpm@$PNPM_VERSION
+      - pnpm build
+      - pnpm config set store-dir /pnpm
+      - rm -rf ./node_modules
+      - pnpm install --prefer-offline --frozen-lockfile --store /pnpm --prod
+
+    environment:
+    volumes:
+      - name: pnpm
+        path: /pnpm
+      - name: cache2
+        path: /cache2
+    when:
+      branch:
+        - main
+      paths:
+        include:
+          - src/
+
+  - name: buildImage:staging
+    image: plugins/gcr
+    settings:
+      registry: registry.digitalocean.com
+      repo: registry.digitalocean.com/meety-dev/meety-app-staging
+      tags:
+        - latest
+        - ${DRONE_COMMIT}
+      envs:
+        - DO_KEY_DEV
+      DO_KEY_DEV:
+        from_secret: DO_KEY_DEV
+      json_key:
+        from_secret: DO_KEY_DEV
+      dockerfile: Dockerfile
+    commands:
+      - export DATE=`date +"%Y%m%d%H%M"`
+      - echo ${DRONE_COMMIT} ${DATE}
+      - docker login registry.digitalocean.com -u $DO_KEY_DEV -p $DO_KEY_DEV
+      - docker build --rm=true -f Dockerfile -t bullboardimage . --pull=true --label org.opencontainers.image.source=https://github.com/RockyHubJsc/bull-board.git --label org.opencontainers.image.url=https://github.com/RockyHubJsc/bull-board
+      - docker tag bullboardimage registry.digitalocean.com/meety-dev/meety-app-staging:bullboard_staging_v$DATE
+      - docker push registry.digitalocean.com/meety-dev/meety-app-staging:bullboard_staging_v$DATE
+
+    environment:
+      DO_KEY_DEV:
+        from_secret: DO_KEY_DEV
+      API_URL:
+        from_secret: MASSY_API_URL_STAGING
+    volumes:
+      - name: docker2
+        path: /var/lib/docker
+      - name: dhost
+        path: /var/run/docker.sock
+      - name: pnpm
+        path: /pnpm
+      - name: cache2
+        path: /cache2
+    when:
+      branch:
+        - main
+
+volumes:
+  - name: certs
+    host:
+      path: /tmp/certs
+  - name: cache2
+    host:
+      path: /var/cache2
+  - name: docker
+    host:
+      path: /var/cache/${DRONE_REPO}/docker
+  - name: dhost
+    host:
+      path: /var/run/docker.sock
+  - name: pnpm
+    host:
+      path: /var/cache2/${DRONE_REPO}/pnpm
+
+trigger:
+  branch:
+    - main
+  event:
+    exclude:
+      - pull_request
+image_pull_secrets:
+  - dockerconfig
