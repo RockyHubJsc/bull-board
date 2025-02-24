@@ -13,4 +13,4 @@ COPY . .
 
 # RUN yarn build:web
 
-CMD ["pnpm", "start:prod"]
+CMD ["node", "dist/index.js"]
