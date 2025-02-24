@@ -1,6 +1,6 @@
 import { createBullBoard } from "@bull-board/api";
 import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
-// import { BullAdapter } from "@bull-board/api/bullAdapter";
+import { BullAdapter } from "@bull-board/api/bullAdapter";
 import { ExpressAdapter } from "@bull-board/express";
 import Queue from "bull";
 import { Queue as QueueMQ } from "bullmq";
@@ -46,8 +46,11 @@ async function getQueueKeys() {
   const queueKeys = await getQueueKeys();
   console.log(queueKeys);
 
-  const queues = queueKeys.map((i) => new BullMQAdapter(createQueueMQ(i)));
-  // const queues = queueKeys.map((i) => new BullAdapter(createQueue(i)));
+  const useQueueMQ = process.env.USE_QUEUE_MQ === "true";
+  // const queues = queueKeys.map((i) => new BullMQAdapter(createQueueMQ(i)));
+  const queues = useQueueMQ
+    ? queueKeys.map((i) => new BullMQAdapter(createQueueMQ(i)))
+    : queueKeys.map((i) => new BullAdapter(createQueue(i)));
 
   // queues.map((queue) => {
   //   queue.addJob("__TESTING__", { foo: "bar" }, { delay: 10000 });
@@ -62,7 +65,7 @@ async function getQueueKeys() {
   });
 
   app.use("/queues", serverAdapter.getRouter());
-  app.use('/healthz',(req: any, res: any)=>{
+  app.use("/healthz", (req: any, res: any) => {
     res.status(200).send("OK");
     return;
   });
