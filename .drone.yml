@@ -54,6 +54,7 @@ steps:
     when:
       branch:
         - main
+        - main-massy
       paths:
         include:
           - src/
@@ -98,7 +99,46 @@ steps:
     when:
       branch:
         - main
+  - name: buildImage:prod-massy
+    image: plugins/gcr
+    settings:
+      registry: registry.digitalocean.com
+      repo: registry.digitalocean.com/massy-production-container-registry/massy-app-api
+      tags:
+        - latest
+        - ${DRONE_COMMIT}
+      envs:
+        - DO_KEY
+      DO_KEY_DEV:
+        from_secret: DO_KEY
+      json_key:
+        from_secret: DO_KEY
+      dockerfile: Dockerfile
+    commands:
+      - export DATE=`date +"%Y%m%d%H%M"`
+      - echo ${DRONE_COMMIT} ${DATE}
+      - docker login registry.digitalocean.com -u $DO_KEY -p $DO_KEY
+      - docker build --rm=true -f Dockerfile -t bullboardimage . --pull=true --label org.opencontainers.image.source=https://github.com/RockyHubJsc/bull-board.git --label org.opencontainers.image.url=https://github.com/RockyHubJsc/bull-board
+      - docker tag bullboardimage registry.digitalocean.com/massy-production-container-registry/massy-app-web:bullboard_staging_v$DATE
+      - docker push registry.digitalocean.com/massy-production-container-registry/massy-app-web:bullboard_staging_v$DATE
 
+    environment:
+      DO_KEY:
+        from_secret: DO_KEY
+      API_URL:
+        from_secret: MASSY_API_URL
+    volumes:
+      - name: docker
+        path: /var/lib/docker
+      - name: dhost
+        path: /var/run/docker.sock
+      - name: pnpm
+        path: /pnpm
+      - name: cache2
+        path: /cache2
+    when:
+      branch:
+        - main-massy
 volumes:
   - name: certs
     host:
@@ -119,6 +159,7 @@ volumes:
 trigger:
   branch:
     - main
+    - main-massy
   event:
     exclude:
       - pull_request
