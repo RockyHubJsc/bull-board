@@ -119,12 +119,12 @@ steps:
       - echo ${DRONE_COMMIT} ${DATE}
       - docker login registry.digitalocean.com -u $DO_KEY -p $DO_KEY
       - docker build --rm=true -f Dockerfile -t bullboardimage . --pull=true --label org.opencontainers.image.source=https://github.com/RockyHubJsc/bull-board.git --label org.opencontainers.image.url=https://github.com/RockyHubJsc/bull-board
-      - docker tag bullboardimage registry.digitalocean.com/massy-production-container-registry/massy-app-web:bullboard_staging_v$DATE
-      - docker push registry.digitalocean.com/massy-production-container-registry/massy-app-web:bullboard_staging_v$DATE
+      - docker tag bullboardimage registry.digitalocean.com/massy-production-container-registry/massy-app-bullboard/prod:prod_v$DATE
+      - docker push registry.digitalocean.com/massy-production-container-registry/massy-app-bullboard/prod:prod_v$DATE
 
     environment:
       DO_KEY:
-        from_secret: DO_KEY
+        from_secret: MASSY_DO_KEY
       API_URL:
         from_secret: MASSY_API_URL
     volumes:
