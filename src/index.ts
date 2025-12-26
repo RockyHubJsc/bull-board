@@ -5,6 +5,9 @@ import { Queue as QueueMQ } from "bullmq";
 import dotenv from "dotenv";
 import express from "express";
 import { Redis, RedisOptions } from "ioredis";
+import session from "express-session";
+import passport from "./auth/googleStrategy";
+import { isAuthenticated } from "./middleware/authMiddleware";
 
 // Load environment variables
 dotenv.config();
@@ -76,6 +79,44 @@ async function getQueueKeys(redisConfig: RedisOptions): Promise<string[]> {
   try {
     const app = express();
 
+    app.use(
+      session({
+        secret: process.env.SESSION_SECRET || "your-secret-key-change-this",
+        resave: false,
+        saveUninitialized: false,
+        cookie: {
+          secure: process.env.NODE_ENV === "production",
+          maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        },
+      }),
+    );
+
+    // Auth routes
+    app.get(
+      "/auth/google",
+      passport.authenticate("google", { scope: ["profile", "email"] }),
+    );
+
+    app.get(
+      "/auth/google/callback",
+      passport.authenticate("google", { failureRedirect: "/auth/failed" }),
+      (req, res) => {
+        res.redirect("/");
+      },
+    );
+
+    app.get("/auth/failed", (req, res) => {
+      res.send(
+        '<h1>Authentication Failed</h1><a href="/auth/google">Try Again</a>',
+      );
+    });
+
+    app.get("/logout", (req, res) => {
+      req.logout(() => {
+        res.redirect("/");
+      });
+    });
+
     console.log(`Loading ${boardConfigs.length} board configuration(s)...`);
 
     // Setup each Bull Board instance
@@ -98,14 +139,14 @@ async function getQueueKeys(redisConfig: RedisOptions): Promise<string[]> {
       );
 
       createBullBoard({ queues, serverAdapter });
-      app.use(config.router, serverAdapter.getRouter());
+      app.use(config.router, isAuthenticated, serverAdapter.getRouter());
     }
 
     app.use("/healthz", (_req, res) => {
       res.status(200).send("OK");
     });
 
-    app.use("/", (_req, res) => {
+    app.use("/", isAuthenticated, (_req, res) => {
       res.send(
         `<h1>Bull Board Multi-Instance Server</h1>
          <p>Available Boards:</p>
