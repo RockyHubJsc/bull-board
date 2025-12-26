@@ -27,6 +27,9 @@ const GOOGLE_CLIENT_SECRET = gapiCredentialsEncoded.web.client_secret!;
 const CALLBACK_URL =
   process.env.GOOGLE_CALLBACK_URL ||
   "http://localhost:7712/auth/google/callback";
+const ALLOWED_DOMAINS = (process.env.ALLOWED_DOMAINS || "rockyhub.io")
+  .split(",")
+  .map((domain) => domain.trim());
 
 passport.use(
   new GoogleStrategy(
@@ -36,12 +39,32 @@ passport.use(
       callbackURL: CALLBACK_URL,
     },
     (accessToken, refreshToken, profile, done) => {
-      // Store user profile or validate against allowed users
+      const email = profile.emails?.[0]?.value;
+
+      // Check if email exists and has allowed domain
+      if (!email) {
+        console.log("❌ Authentication failed: No email found in profile");
+        return done(null, false, {
+          message: "No email found in profile",
+        });
+      }
+
+      const emailDomain = email.split("@")[1];
+      if (!ALLOWED_DOMAINS.includes(emailDomain)) {
+        console.log(
+          `❌ Authentication failed: Email ${email} is not from allowed domains: ${ALLOWED_DOMAINS.join(", ")}`,
+        );
+        return done(null, false, {
+          message: `Only emails from ${ALLOWED_DOMAINS.join(", ")} are allowed`,
+        });
+      }
+
       const user = {
         id: profile.id,
-        email: profile.emails?.[0]?.value,
+        email: email,
         displayName: profile.displayName,
       };
+      console.log("✅ Authentication successful:", user);
       return done(null, user);
     },
   ),

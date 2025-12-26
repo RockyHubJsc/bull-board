@@ -1,4 +1,7 @@
-export function renderAuthFailed(): string {
+export function renderAuthFailed(errorMessage?: string): string {
+  const message =
+    errorMessage || "We couldn't verify your identity. Please try again.";
+
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -27,24 +30,11 @@ export function renderAuthFailed(): string {
       width: 100%;
       padding: 50px 40px;
       text-align: center;
-      animation: shake 0.5s ease-in-out;
-    }
-    
-    @keyframes shake {
-      0%, 100% { transform: translateX(0); }
-      10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
-      20%, 40%, 60%, 80% { transform: translateX(10px); }
     }
     
     .error-icon {
       font-size: 5rem;
       margin-bottom: 20px;
-      animation: pulse 2s infinite;
-    }
-    
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.1); }
     }
     
     h1 {
@@ -126,7 +116,7 @@ export function renderAuthFailed(): string {
   <div class="container">
     <div class="error-icon">🔒</div>
     <h1>Authentication Failed</h1>
-    <p>We couldn't verify your identity. Please try again.</p>
+    <p>${message}</p>
     
     <div class="details">
       <h3>Possible reasons:</h3>
