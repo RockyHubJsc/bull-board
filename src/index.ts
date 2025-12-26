@@ -105,6 +105,23 @@ async function getQueueKeys(redisConfig: RedisOptions): Promise<string[]> {
       res.status(200).send("OK");
     });
 
+    app.use("/", (_req, res) => {
+      res.send(
+        `<h1>Bull Board Multi-Instance Server</h1>
+         <p>Available Boards:</p>
+         <ul>
+           ${boardConfigs
+             .map(
+               (cfg) =>
+                 `<li><a href="${cfg.router}">${cfg.router}</a> ${
+                   cfg.readOnlyMode ? "(Read-Only)" : ""
+                 }</li>`,
+             )
+             .join("")}
+         </ul>`,
+      );
+    });
+
     app.listen(PORT, () => {
       console.log(`\n🚀 Server running on port ${PORT}`);
       console.log(`📊 Bull Board UIs:`);
