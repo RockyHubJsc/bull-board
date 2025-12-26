@@ -4,77 +4,41 @@ import { ExpressAdapter } from "@bull-board/express";
 import { Queue as QueueMQ } from "bullmq";
 import dotenv from "dotenv";
 import express from "express";
-import { Redis, RedisOptions } from "ioredis";
+import session from "express-session";
+import morgan from "morgan";
+import passport from "./auth/googleStrategy";
+import { loadBoardConfigs } from "./config/boards";
+import { isAuthenticated } from "./middleware/authMiddleware";
+import authRoutes from "./routes/auth";
+import { getQueueKeys } from "./utils/redis";
+import { renderDashboard } from "./views/dashboard";
 
-// Load environment variables
 dotenv.config();
 
 const PORT = process.env.PORT || 7712;
-
-interface BoardConfig {
-  router: string;
-  redisConfig: RedisOptions;
-  readOnlyMode?: boolean;
-}
-
-// Parse board configurations from environment
-function loadBoardConfigs(): BoardConfig[] {
-  const configs: BoardConfig[] = [];
-  let idx = 1;
-
-  // Read individual BOARD_ROUTER_N variables
-  while (process.env[`BOARD_ROUTER_${idx}`]) {
-    const router = process.env[`BOARD_ROUTER_${idx}`];
-    configs.push({
-      router: router!,
-      redisConfig: {
-        host: process.env[`REDIS_HOST_${idx}`] || "localhost",
-        port: parseInt(process.env[`REDIS_PORT_${idx}`] || "6379"),
-        db: parseInt(process.env[`REDIS_DB_${idx}`] || String(idx)),
-        password: process.env[`REDIS_PASSWORD_${idx}`],
-      },
-      readOnlyMode: process.env[`READ_ONLY_MODE_${idx}`] === "true",
-    });
-    idx++;
-  }
-
-  // Default configs if none provided
-  if (configs.length === 0) {
-    configs.push(
-      {
-        router: "/board1",
-        redisConfig: { host: "localhost", port: 6379, db: 1 },
-        readOnlyMode: false,
-      },
-      {
-        router: "/board2",
-        redisConfig: { host: "localhost", port: 6379, db: 2 },
-        readOnlyMode: false,
-      },
-    );
-  }
-
-  return configs;
-}
-
 const boardConfigs = loadBoardConfigs();
-
-async function getQueueKeys(redisConfig: RedisOptions): Promise<string[]> {
-  const redis = new Redis(redisConfig);
-  try {
-    const keys = await redis.keys("bull:*");
-    return [...new Set(keys.map((key) => key.split(":")[1]))].sort();
-  } catch (err) {
-    console.error("Error fetching queue keys:", err);
-    return [];
-  } finally {
-    await redis.quit();
-  }
-}
 
 (async () => {
   try {
     const app = express();
+    app.use(morgan("dev"));
+    app.use(
+      session({
+        secret: process.env.SESSION_SECRET || "your-secret-key-change-this",
+        resave: false,
+        saveUninitialized: false,
+        cookie: {
+          secure: process.env.NODE_ENV === "production",
+          maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        },
+      }),
+    );
+
+    app.use(passport.initialize());
+    app.use(passport.session());
+
+    // Routes
+    app.use(authRoutes);
 
     console.log(`Loading ${boardConfigs.length} board configuration(s)...`);
 
@@ -98,28 +62,14 @@ async function getQueueKeys(redisConfig: RedisOptions): Promise<string[]> {
       );
 
       createBullBoard({ queues, serverAdapter });
-      app.use(config.router, serverAdapter.getRouter());
+      app.use(config.router, isAuthenticated, serverAdapter.getRouter());
     }
 
-    app.use("/healthz", (_req, res) => {
-      res.status(200).send("OK");
-    });
+    app.get("/healthz", (_req, res) => res.status(200).send("OK"));
 
-    app.use("/", (_req, res) => {
-      res.send(
-        `<h1>Bull Board Multi-Instance Server</h1>
-         <p>Available Boards:</p>
-         <ul>
-           ${boardConfigs
-             .map(
-               (cfg) =>
-                 `<li><a href="${cfg.router}">${cfg.router}</a> ${
-                   cfg.readOnlyMode ? "(Read-Only)" : ""
-                 }</li>`,
-             )
-             .join("")}
-         </ul>`,
-      );
+    app.get("/", isAuthenticated, (req, res) => {
+      const user = req.user as any;
+      res.send(renderDashboard(user, boardConfigs));
     });
 
     app.listen(PORT, () => {
