@@ -5,7 +5,7 @@ export const isAuthenticated = (
   res: Response,
   next: NextFunction,
 ) => {
-  if (req.isAuthenticated()) {
+  if (req?.isAuthenticated?.()) {
     return next();
   }
   res.redirect("/auth/google");

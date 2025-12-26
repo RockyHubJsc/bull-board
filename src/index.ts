@@ -4,8 +4,9 @@ import { ExpressAdapter } from "@bull-board/express";
 import { Queue as QueueMQ } from "bullmq";
 import dotenv from "dotenv";
 import express from "express";
-import { Redis, RedisOptions } from "ioredis";
 import session from "express-session";
+import { Redis, RedisOptions } from "ioredis";
+import morgan from "morgan";
 import passport from "./auth/googleStrategy";
 import { isAuthenticated } from "./middleware/authMiddleware";
 
@@ -78,7 +79,7 @@ async function getQueueKeys(redisConfig: RedisOptions): Promise<string[]> {
 (async () => {
   try {
     const app = express();
-
+    app.use(morgan("dev"));
     app.use(
       session({
         secret: process.env.SESSION_SECRET || "your-secret-key-change-this",
@@ -91,6 +92,10 @@ async function getQueueKeys(redisConfig: RedisOptions): Promise<string[]> {
       }),
     );
 
+    // Initialize Passport
+    app.use(passport.initialize());
+    app.use(passport.session());
+
     // Auth routes
     app.get(
       "/auth/google",
@@ -101,7 +106,14 @@ async function getQueueKeys(redisConfig: RedisOptions): Promise<string[]> {
       "/auth/google/callback",
       passport.authenticate("google", { failureRedirect: "/auth/failed" }),
       (req, res) => {
-        res.redirect("/");
+        // Save session before redirecting to prevent redirect loop
+        req.session.save((err) => {
+          if (err) {
+            console.error("Session save error:", err);
+            return res.redirect("/auth/failed");
+          }
+          res.redirect("/");
+        });
       },
     );
 
@@ -147,20 +159,20 @@ async function getQueueKeys(redisConfig: RedisOptions): Promise<string[]> {
     });
 
     app.use("/", isAuthenticated, (_req, res) => {
-      res.send(
-        `<h1>Bull Board Multi-Instance Server</h1>
-         <p>Available Boards:</p>
-         <ul>
-           ${boardConfigs
-             .map(
-               (cfg) =>
-                 `<li><a href="${cfg.router}">${cfg.router}</a> ${
-                   cfg.readOnlyMode ? "(Read-Only)" : ""
-                 }</li>`,
-             )
-             .join("")}
-         </ul>`,
-      );
+      res.send(`
+        <h1>Bull Board Multi-Instance Server</h1>
+        <p>Available Boards:</p>
+        <ul>
+          ${boardConfigs
+            .map(
+              (cfg) =>
+                `<li><a href="${cfg.router}">${cfg.router}</a> ${
+                  cfg.readOnlyMode ? "(Read-Only)" : ""
+                }</li>`,
+            )
+            .join("")}
+        </ul>
+        <p><a href="/logout">Logout</a></p>`);
     });
 
     app.listen(PORT, () => {

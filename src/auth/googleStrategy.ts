@@ -1,11 +1,32 @@
+import { config } from "dotenv";
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
+config();
+
+export const base64Decode = (str: string) => {
+  const b = Buffer.from(str, "base64");
+  return b.toString();
+};
+
+const gapiCredentialsEncoded = JSON.parse(
+  process.env.GAPI_CREDENTIALS_ENCODED
+    ? base64Decode(process.env.GAPI_CREDENTIALS_ENCODED)
+    : "{}",
+);
+console.log("🚀 ~ gapiCredentialsEncoded:", gapiCredentialsEncoded);
+
+if (!gapiCredentialsEncoded.web) {
+  throw new Error(
+    "GAPI credentials are not properly set in environment variables.",
+  );
+}
+
+const GOOGLE_CLIENT_ID = gapiCredentialsEncoded.web.client_id!;
+const GOOGLE_CLIENT_SECRET = gapiCredentialsEncoded.web.client_secret!;
 const CALLBACK_URL =
   process.env.GOOGLE_CALLBACK_URL ||
-  "http://localhost:3000/auth/google/callback";
+  "http://localhost:7712/auth/google/callback";
 
 passport.use(
   new GoogleStrategy(
@@ -27,10 +48,12 @@ passport.use(
 );
 
 passport.serializeUser((user: any, done) => {
+  console.log("🚀 ~ serializeUser:", user);
   done(null, user);
 });
 
 passport.deserializeUser((user: any, done) => {
+  console.log("🚀 ~ deserializeUser:", user);
   done(null, user);
 });
 
