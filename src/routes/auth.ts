@@ -11,20 +11,28 @@ router.get(
 
 router.get(
   "/auth/google/callback",
-  passport.authenticate("google", { failureRedirect: "/auth/failed" }),
+  passport.authenticate("google", {
+    failureRedirect: "/auth/failed",
+    failureMessage: true,
+  }),
   (req, res) => {
     req.session.save((err) => {
       if (err) {
         console.error("Session save error:", err);
-        return res.redirect("/auth/failed");
+        return res.redirect("/auth/failed?error=session_save_failed");
       }
       res.redirect("/");
     });
   },
 );
 
-router.get("/auth/failed", (_req, res) => {
-  res.send(renderAuthFailed());
+router.get("/auth/failed", (req, res) => {
+  const session = req.session as any;
+  const message = session.messages?.[0] || (req.query.error as string);
+  res.send(renderAuthFailed(message));
+  if (session.messages) {
+    session.messages = [];
+  }
 });
 
 router.get("/logout", (req, res) => {
