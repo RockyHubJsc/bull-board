@@ -1,78 +1,87 @@
 import { createBullBoard } from "@bull-board/api";
 import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
-import { BullAdapter } from "@bull-board/api/bullAdapter";
 import { ExpressAdapter } from "@bull-board/express";
-import Queue from "bull";
 import { Queue as QueueMQ } from "bullmq";
 import dotenv from "dotenv";
 import express from "express";
-import { Redis, RedisOptions } from "ioredis";
+import session from "express-session";
+import morgan from "morgan";
+import passport from "./auth/googleStrategy";
+import { loadBoardConfigs } from "./config/boards";
+import { isAuthenticated } from "./middleware/authMiddleware";
+import authRoutes from "./routes/auth";
+import { getQueueKeys } from "./utils/redis";
+import { renderDashboard } from "./views/dashboard";
 
-// Load environment variables
 dotenv.config();
 
 const PORT = process.env.PORT || 7712;
-
-const redisConfig: RedisOptions = {
-  host: process.env.REDIS_HOST || "localhost",
-  port: parseInt(process.env.REDIS_PORT || "6379"),
-  db: parseInt(process.env.REDIS_DB || "1"),
-  password: process.env.REDIS_PASSWORD,
-}; // Your Redis configuration
-
-const redis = new Redis(redisConfig);
-
-const createQueueMQ = (name: string) =>
-  new QueueMQ(name, { connection: redisConfig });
-
-const createQueue = (name: string) => new Queue(name, { redis: redisConfig });
-
-async function getQueueKeys() {
-  try {
-    const keys = await redis.keys("bull:*");
-    return Array.from(new Set(keys.map((i) => i.split(":")[1])));
-  } catch (err) {
-    console.error("Error fetching keys:", err);
-    throw err;
-  } finally {
-    redis.disconnect();
-  }
-}
+const boardConfigs = loadBoardConfigs();
 
 (async () => {
-  const app = express();
-  const serverAdapter = new ExpressAdapter();
-  serverAdapter.setBasePath("/queues");
-  const queueKeys = await getQueueKeys();
-  console.log(queueKeys);
+  try {
+    const app = express();
+    app.use(morgan("dev"));
+    app.use(
+      session({
+        secret: process.env.SESSION_SECRET || "your-secret-key-change-this",
+        resave: false,
+        saveUninitialized: false,
+        cookie: {
+          secure: process.env.NODE_ENV === "production",
+          maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        },
+      }),
+    );
 
-  const useQueueMQ = process.env.USE_QUEUE_MQ === "true";
-  // const queues = queueKeys.map((i) => new BullMQAdapter(createQueueMQ(i)));
-  const queues = useQueueMQ
-    ? queueKeys.map((i) => new BullMQAdapter(createQueueMQ(i)))
-    : queueKeys.map((i) => new BullAdapter(createQueue(i)));
+    app.use(passport.initialize());
+    app.use(passport.session());
 
-  // queues.map((queue) => {
-  //   queue.addJob("__TESTING__", { foo: "bar" }, { delay: 10000 });
-  //   queue.addJob("__TESTING__", { foo: "bar" }, { delay: 10000 });
-  //   queue.addJob("__TESTING__", { foo: "bar" }, { delay: 10000 });
-  //   queue.addJob("__TESTING__", { foo: "bar" }, { delay: 10000 });
-  // });
+    // Routes
+    app.use(authRoutes);
 
-  const { addQueue, removeQueue, setQueues, replaceQueues } = createBullBoard({
-    queues,
-    serverAdapter,
-  });
+    console.log(`Loading ${boardConfigs.length} board configuration(s)...`);
 
-  app.use("/queues", serverAdapter.getRouter());
-  app.use("/healthz", (req: any, res: any) => {
-    res.status(200).send("OK");
-    return;
-  });
+    // Setup each Bull Board instance
+    for (const config of boardConfigs) {
+      const serverAdapter = new ExpressAdapter();
+      serverAdapter.setBasePath(config.router);
 
-  app.listen(PORT, () => {
-    console.log(`Running on ${PORT}...`);
-    console.log(`For the UI, open http://localhost:${PORT}/queues`);
-    console.log("Make sure Redis is running on port 6379 by default");
-  });
+      const queueKeys = await getQueueKeys(config.redisConfig);
+      console.log(
+        `[${config.router}] Found ${queueKeys.length} queue(s):`,
+        queueKeys,
+      );
+
+      const queues = queueKeys.map(
+        (name) =>
+          new BullMQAdapter(
+            new QueueMQ(name, { connection: config.redisConfig }),
+            { readOnlyMode: config.readOnlyMode },
+          ),
+      );
+
+      createBullBoard({ queues, serverAdapter });
+      app.use(config.router, isAuthenticated, serverAdapter.getRouter());
+    }
+
+    app.get("/healthz", (_req, res) => res.status(200).send("OK"));
+
+    app.get("/", isAuthenticated, (req, res) => {
+      const user = req.user as any;
+      res.send(renderDashboard(user, boardConfigs));
+    });
+
+    app.listen(PORT, () => {
+      console.log(`\n🚀 Server running on port ${PORT}`);
+      console.log(`📊 Bull Board UIs:`);
+      boardConfigs.forEach((cfg) => {
+        const mode = cfg.readOnlyMode ? "[READ-ONLY]" : "";
+        console.log(`   • http://localhost:${PORT}${cfg.router} ${mode}`);
+      });
+    });
+  } catch (error) {
+    console.error("❌ Failed to start server:", error);
+    process.exit(1);
+  }
 })();
