@@ -8,5 +8,11 @@ export const isAuthenticated = (
   if (req?.isAuthenticated?.()) {
     return next();
   }
+  console.log(
+    "🚀 ~ isAuthenticated ~ req?.isAuthenticated?.():",
+    req?.isAuthenticated?.(),
+    req.authInfo,
+    req.user,
+  );
   res.redirect("/auth/google");
 };

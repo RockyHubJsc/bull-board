@@ -21,6 +21,7 @@ const boardConfigs = loadBoardConfigs();
 (async () => {
   try {
     const app = express();
+    app.set("trust proxy", 1); // if behind a proxy (Nginx, Cloudflare, etc.)
     app.use(morgan("dev"));
     app.use(
       session({
@@ -28,7 +29,7 @@ const boardConfigs = loadBoardConfigs();
         resave: false,
         saveUninitialized: false,
         cookie: {
-          secure: process.env.NODE_ENV === "production",
+          secure: process.env.NODE_ENV === "production", // set to true in production
           maxAge: 24 * 60 * 60 * 1000, // 24 hours
         },
       }),
