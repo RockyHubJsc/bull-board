@@ -1,2 +1,8 @@
 allowBuilds:
+  esbuild: true
   msgpackr-extract: true
+minimumReleaseAgeExclude:
+  - '@bull-board/api@9.0.1'
+  - '@bull-board/express@9.0.1'
+  - '@bull-board/ui@9.0.1'
+  - '@bull-board/metrics@9.0.1'
