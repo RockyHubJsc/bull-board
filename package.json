@@ -11,10 +11,10 @@
   "license": "ISC",
   "description": "This project sets up an Express server with Bull and Bull Board for managing and monitoring Redis queues.",
   "dependencies": {
-    "@bull-board/api": "9.0.1",
-    "@bull-board/express": "9.0.1",
-    "@bull-board/metrics": "^9.0.1",
-    "bullmq": "^5.81.3",
+    "@bull-board/api": "^9.5.0",
+    "@bull-board/express": "^9.5.0",
+    "@bull-board/metrics": "^9.5.0",
+    "bullmq": "^6.3.1",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
@@ -30,6 +30,6 @@
     "@types/node": "^24.13.3",
     "@types/passport": "^1.0.17",
     "@types/passport-google-oauth20": "^2.0.17",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   }
 }
