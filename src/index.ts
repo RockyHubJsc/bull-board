@@ -1,6 +1,7 @@
 import { createBullBoard } from "@bull-board/api";
 import { BullMQAdapter } from "@bull-board/api/bullMQAdapter";
 import { ExpressAdapter } from "@bull-board/express";
+import { RedisMetricsHistoryProvider } from "@bull-board/metrics";
 import { Queue as QueueMQ } from "bullmq";
 import dotenv from "dotenv";
 import express from "express";
@@ -10,7 +11,11 @@ import passport from "./auth/googleStrategy";
 import { loadBoardConfigs } from "./config/boards";
 import { isAuthenticated } from "./middleware/authMiddleware";
 import authRoutes from "./routes/auth";
-import { getQueueKeys } from "./utils/redis";
+import {
+  closeAllRedisConnections,
+  getQueueKeys,
+  getRedisClient,
+} from "./utils/redis";
 import { renderDashboard } from "./views/dashboard";
 
 dotenv.config();
@@ -46,7 +51,8 @@ const boardConfigs = loadBoardConfigs();
       const serverAdapter = new ExpressAdapter();
       serverAdapter.setBasePath(config.router);
 
-      const queueKeys = await getQueueKeys(config.redisConfig);
+      const redisClient = getRedisClient(config.redisConfig);
+      const queueKeys = await getQueueKeys(redisClient);
       console.log(
         `[${config.router}] Found ${queueKeys.length} queue(s):`,
         queueKeys,
@@ -55,12 +61,21 @@ const boardConfigs = loadBoardConfigs();
       const queues = queueKeys.map(
         (name) =>
           new BullMQAdapter(
-            new QueueMQ(name, { connection: config.redisConfig }),
+            new QueueMQ(name, { connection: redisClient as any }),
             { readOnlyMode: config.readOnlyMode },
           ),
       );
 
-      createBullBoard({ queues, serverAdapter });
+      createBullBoard({
+        queues,
+        serverAdapter,
+        options: {
+          uiConfig: { showMetrics: true },
+          historyProvider: new RedisMetricsHistoryProvider({
+            connection: redisClient,
+          }),
+        },
+      });
       app.use(config.router, isAuthenticated, serverAdapter.getRouter());
     }
 
@@ -71,7 +86,7 @@ const boardConfigs = loadBoardConfigs();
       res.send(renderDashboard(user, boardConfigs));
     });
 
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       console.log(`\n🚀 Server running on port ${PORT}`);
       console.log(`📊 Bull Board UIs:`);
       boardConfigs.forEach((cfg) => {
@@ -79,6 +94,20 @@ const boardConfigs = loadBoardConfigs();
         console.log(`   • http://localhost:${PORT}${cfg.router} ${mode}`);
       });
     });
+
+    const handleShutdown = async (signal: string) => {
+      console.log(
+        `\nReceived ${signal}, closing server and Redis connections...`,
+      );
+      server.close(async () => {
+        await closeAllRedisConnections();
+        console.log("Redis connections closed.");
+        process.exit(0);
+      });
+    };
+
+    process.on("SIGINT", () => handleShutdown("SIGINT"));
+    process.on("SIGTERM", () => handleShutdown("SIGTERM"));
   } catch (error) {
     console.error("❌ Failed to start server:", error);
     process.exit(1);
